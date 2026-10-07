@@ -95,5 +95,56 @@ class InfoTest(unittest.TestCase):
         self.assertEqual(juice.parse_reset("1970-01-01T00:01:00Z"), 60.0)
 
 
+class RefillTest(unittest.TestCase):
+    NOW = 1_000_000.0
+
+    def limits(self, five=None, week=None, five_reset=None, week_reset=None):
+        rl = {}
+        if five is not None:
+            rl["five_hour"] = {"used_percentage": five, "resets_at": five_reset}
+        if week is not None:
+            rl["seven_day"] = {"used_percentage": week, "resets_at": week_reset}
+        return rl
+
+    def status(self, rl):
+        return juice.ANSI_RE.sub("", juice.status_text(rl, now=self.NOW))
+
+    def test_empty_five_hour_counts_down(self):
+        rl = self.limits(100, 60, five_reset=self.NOW + 3600 + 23 * 60 + 30)
+        self.assertEqual(self.status(rl), "🧃 ░░░░░░░░░░ empty (5h) · refills in 1h 23m · 40% wk")
+
+    def test_empty_week_takes_priority(self):
+        rl = self.limits(100, 100, five_reset=self.NOW + 600, week_reset=self.NOW + 2 * 86400 + 3 * 3600)
+        self.assertEqual(self.status(rl), "🧃 ░░░░░░░░░░ empty (wk) · refills in 2d 3h")
+
+    def test_empty_week_with_juice_left_in_five(self):
+        rl = self.limits(20, 100, week_reset=self.NOW + 5 * 3600)
+        self.assertEqual(self.status(rl), "🧃 ░░░░░░░░░░ empty (wk) · refills in 5h 0m")
+
+    def test_empty_without_reset_time(self):
+        self.assertEqual(self.status(self.limits(100, 60)), "🧃 ░░░░░░░░░░ empty (5h) · 40% wk")
+
+    def test_empty_is_red(self):
+        self.assertIn(juice.LOW, juice.status_text(self.limits(100), now=self.NOW))
+
+    def test_refill_target(self):
+        self.assertIsNone(juice.refill_target(self.limits(50, 50)))
+        self.assertEqual(juice.refill_target(self.limits(100, 50, five_reset=5.0)), ("5h", 5.0))
+        self.assertEqual(juice.refill_target(self.limits(100, 100, 5.0, 9.0)), ("wk", 9.0))
+
+    def test_clock(self):
+        self.assertEqual(juice.fmt_clock(0), "0:00:00")
+        self.assertEqual(juice.fmt_clock(3600 + 23 * 60 + 45), "1:23:45")
+        self.assertEqual(juice.fmt_clock(2 * 86400 + 5), "2d 0:00:05")
+        self.assertEqual(juice.fmt_clock(-10), "0:00:00")
+
+    def test_countdown_line(self):
+        rl = self.limits(100, five_reset=self.NOW + 65)
+        self.assertEqual(juice.countdown_line(rl, self.NOW), "refills in 0:01:05")
+        self.assertEqual(juice.countdown_line(rl, self.NOW + 100), "refilled! send a message")
+        self.assertIsNone(juice.countdown_line(self.limits(100), self.NOW))
+        self.assertIsNone(juice.countdown_line(self.limits(50), self.NOW))
+
+
 if __name__ == "__main__":
     unittest.main()
