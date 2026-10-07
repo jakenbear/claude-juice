@@ -2,8 +2,9 @@
 """juice: animated Claude Code usage meter.
 
 Reads the rate limits cached by statusline.py and pours a glass filled to the
-share of your 5-hour window that's left. `juice --static` skips the animation;
-`juice --plain` also drops colors.
+share of your 5-hour window that's left. When a window runs dry it counts down
+to the refill. `juice --static` skips the animation; `juice --plain` also drops
+colors.
 """
 import json
 import os
@@ -63,19 +64,28 @@ def parse_reset(value):
         return None
 
 
-def fmt_until(ts, now):
+def fmt_until(ts, now, verb="resets"):
     if ts is None:
         return ""
     secs = int(ts - now)
     if secs <= 0:
-        return "resets now"
+        return f"{verb} now"
     hours, mins = divmod(secs // 60, 60)
     days, hours = divmod(hours, 24)
     if days:
-        return f"resets in {days}d {hours}h"
+        return f"{verb} in {days}d {hours}h"
     if hours:
-        return f"resets in {hours}h {mins}m"
-    return f"resets in {mins}m"
+        return f"{verb} in {hours}h {mins}m"
+    return f"{verb} in {mins}m"
+
+
+def fmt_clock(secs):
+    secs = max(0, int(secs))
+    days, secs = divmod(secs, 86400)
+    hours, secs = divmod(secs, 3600)
+    mins, secs = divmod(secs, 60)
+    clock = f"{hours}:{mins:02d}:{secs:02d}"
+    return f"{days}d {clock}" if days else clock
 
 
 def fmt_age(secs):
@@ -117,13 +127,41 @@ def fill_rows(pct):
     return max(1, rows) if pct > 0 else 0
 
 
-def status_text(rate_limits):
+def refill_target(rate_limits):
+    """(label, reset timestamp) of the window that's run dry, weekly first, else None."""
+    rate_limits = rate_limits if isinstance(rate_limits, dict) else {}
+    for label, key in (("wk", "seven_day"), ("5h", "five_hour")):
+        window = rate_limits.get(key)
+        if pct_left(window) == 0:
+            return label, parse_reset(window.get("resets_at"))
+    return None
+
+
+def countdown_line(rate_limits, now):
+    target = refill_target(rate_limits)
+    if not target or target[1] is None:
+        return None
+    if now >= target[1]:
+        return "refilled! send a message"
+    return f"refills in {fmt_clock(target[1] - now)}"
+
+
+def status_text(rate_limits, now=None):
     """One-line meter for the Claude Code status bar."""
     rate_limits = rate_limits if isinstance(rate_limits, dict) else {}
     five = pct_left(rate_limits.get("five_hour"))
     week = pct_left(rate_limits.get("seven_day"))
     if five is None and week is None:
         return "🧃 --"
+    target = refill_target(rate_limits)
+    if target:
+        label, reset = target
+        parts = [f"{LOW}{bar(0)}{RESET} empty ({label})"]
+        if reset is not None:
+            parts.append(fmt_until(reset, time.time() if now is None else now, "refills"))
+        if label == "5h" and week is not None:
+            parts.append(f"{week:.0f}% wk")
+        return "🧃 " + " · ".join(parts)
     parts = []
     if five is not None:
         color = LOW if five < LOW_PCT else JUICE
@@ -220,20 +258,29 @@ def render_frame(level, info=(), tick=0, pouring=False, drops=False, low=False, 
     return lines
 
 
-def animate(pct, info, low, out=sys.stdout):
+def with_countdown(info, rate_limits, now):
+    line = countdown_line(rate_limits, now)
+    return list(info) + [(None, ""), (BOLD + LOW, line)] if line else info
+
+
+def animate(pct, info, low, rate_limits=None, out=sys.stdout):
+    """Pour the glass. If a window is dry, keep dripping and tick the refill countdown until Ctrl-C."""
     target = fill_rows(pct)
     height = 0
+    ticking = countdown_line(rate_limits, time.time()) is not None
     out.write("\033[?25l")
     try:
-        for tick in range(POUR_FRAMES + SETTLE_FRAMES):
+        tick = 0
+        while tick < POUR_FRAMES + SETTLE_FRAMES or ticking:
             pouring = tick < POUR_FRAMES
             level = min(target, target * (tick + 1) / (POUR_FRAMES * 0.85))
+            now = time.time()
             lines = render_frame(
                 level,
-                () if pouring else info,
+                () if pouring else with_countdown(info, rate_limits, now),
                 tick,
                 pouring=pouring and target > 0,
-                drops=pouring and target == 0,
+                drops=(pouring or ticking) and target == 0,
                 low=low,
             )
             if height:
@@ -241,6 +288,9 @@ def animate(pct, info, low, out=sys.stdout):
             out.write("".join(f"\033[2K{line}\n" for line in lines))
             out.flush()
             height = len(lines)
+            if ticking and not pouring and countdown_line(rate_limits, now).startswith("refilled"):
+                break
+            tick += 1
             time.sleep(1 / FPS)
     finally:
         out.write("\033[?25h")
@@ -260,16 +310,20 @@ def main(argv=None):
     if pct is None:
         print("No rate-limit data cached. Claude Code only reports it on Pro/Max plans.")
         return 1
+    if refill_target(rate_limits):
+        pct = 0.0  # a dry weekly window blocks you even with 5h juice left
 
-    info, low = info_lines(usage, time.time()), pct < LOW_PCT
+    now = time.time()
+    info, low = info_lines(usage, now), pct < LOW_PCT
     plain = "--plain" in argv or "NO_COLOR" in os.environ
-    if plain:
-        info = [(None, text) for _, text in info]
     if plain or "--static" in argv or not sys.stdout.isatty():
+        info = with_countdown(info, rate_limits, now)
+        if plain:
+            info = [(None, text) for _, text in info]
         print("\n".join(render_frame(fill_rows(pct), info, low=low, color=not plain)))
     else:
         try:
-            animate(pct, info, low)
+            animate(pct, info, low, rate_limits)
         except KeyboardInterrupt:
             return 130
     return 0
