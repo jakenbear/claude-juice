@@ -31,7 +31,7 @@ You get:
 - **`juice`** in any terminal: an animated pour that fills the glass to your 5-hour % left. It turns red under 20%.
 - **`/juice`** inside Claude Code: the same glass, drawn in chat.
 
-Needs a Claude Pro or Max login (that's where the rate-limit numbers come from) and `python3`. No other dependencies.
+**Requirements:** `python3` and Claude Code signed in with a Claude Pro or Max plan. API-key and Bedrock/Vertex logins don't report rate limits, so the meter shows `🧃 --`.
 
 ## Install
 
@@ -43,7 +43,7 @@ In Claude Code:
 /juice:setup
 ```
 
-Then send any message so the status line picks up your usage.
+Then send any message so the status line picks up your usage. Type `/juice` to see the glass.
 
 Without the plugin system:
 
@@ -69,6 +69,13 @@ juice --plain    # final frame, no colors
 ```
 
 `! juice` inside Claude Code isn't a real terminal, so it shows the static glass.
+
+## Troubleshooting
+
+- **`marketplace add` says "could not lock config file"**: run `/plugin` and check the list. The marketplace is usually added anyway, so go on to `/plugin install`.
+- **Meter shows `🧃 --`**: send a message first. If it still shows `--`, your login doesn't report rate limits (see Requirements).
+- **`juice: command not found`**: add `~/.local/bin` to your `PATH`.
+- **Numbers marked "(stale)"**: the cache only updates while Claude Code is open. Send a message to refresh it.
 
 ## How it works
 
