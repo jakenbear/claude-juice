@@ -1,0 +1,16 @@
+{
+  "name": "claude-juice",
+  "owner": {
+    "name": "jakenbear"
+  },
+  "metadata": {
+    "description": "Juice glass usage meter for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "juice",
+      "source": "./",
+      "description": "A juice glass that fills to show how much Claude usage you have left."
+    }
+  ]
+}

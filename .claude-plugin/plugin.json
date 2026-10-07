@@ -1,0 +1,9 @@
+{
+  "name": "juice",
+  "version": "0.1.0",
+  "description": "A juice glass that fills to show how much Claude usage you have left. Status line meter plus an animated `juice` command.",
+  "author": { "name": "jakenbear" },
+  "repository": "https://github.com/jakenbear/claude-juice",
+  "license": "MIT",
+  "keywords": ["statusline", "usage", "rate-limits", "fun"]
+}
