@@ -72,7 +72,6 @@ juice --plain    # final frame, no colors
 
 ## Troubleshooting
 
-- **`marketplace add` says "could not lock config file"**: run `/plugin` and check the list. The marketplace is usually added anyway, so go on to `/plugin install`.
 - **Meter shows `🧃 --`**: send a message first. If it still shows `--`, your login doesn't report rate limits (see Requirements).
 - **`juice: command not found`**: add `~/.local/bin` to your `PATH`.
 - **Numbers marked "(stale)"**: the cache only updates while Claude Code is open. Send a message to refresh it.
